@@ -9,28 +9,40 @@ import {
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import type { NavItem } from '@/types';
 
-export function NavMain({ items = [] }: { items: NavItem[] }) {
-    const { isCurrentUrl } = useCurrentUrl();
+    export function NavMain({ items = [] }: { items: NavItem[] }) {
+        const { isCurrentUrl } = useCurrentUrl();
 
-    return (
-        <SidebarGroup className="px-2 py-0">
-            <SidebarGroupLabel>Platform</SidebarGroupLabel>
-            <SidebarMenu>
-                {items.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                        <SidebarMenuButton
-                            asChild
-                            isActive={isCurrentUrl(item.href)}
-                            tooltip={{ children: item.title }}
-                        >
-                            <Link href={item.href} prefetch>
-                                {item.icon && <item.icon />}
-                                <span>{item.title}</span>
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-                ))}
-            </SidebarMenu>
-        </SidebarGroup>
-    );
-}
+        return (
+            <SidebarGroup className="px-2 py-0">
+                <SidebarGroupLabel>Platform</SidebarGroupLabel>
+                <SidebarMenu>
+                    {items.map((item) => (
+                        <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton
+                                asChild
+                                isActive={isCurrentUrl(item.href)}
+                                tooltip={{ children: item.title }}  
+                                className={`
+                                    group/menu-button
+                                    hover:bg-blue-100 
+                                    hover:text-blue-600
+                                    active:bg-blue-200 
+                                    active:text-blue-700
+                                    data-[active=true]:bg-blue-600 
+                                    data-[active=true]:text-white
+                                    data-[active=true]:hover:bg-blue-700
+                                    transition-all
+                                    duration-200
+                                `}
+                                                        >
+                                <Link href={item.href} prefetch>
+                                    {item.icon && <item.icon />}
+                                    <span>{item.title}</span>
+                                </Link>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                    ))}
+                </SidebarMenu>
+            </SidebarGroup>
+        );
+    }
