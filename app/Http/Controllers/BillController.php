@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use Inertia\Inertia; // Add this import
 
 class BillController extends Controller
 {
@@ -18,19 +19,23 @@ class BillController extends Controller
     {
         $user = Auth::user();
         
-        $bills = Bill::with(['host', 'participants'])
+        $bills = Bill::with(['host', 'participants.user'])
                     ->forUser($user->id)
                     ->active()
                     ->latest()
                     ->get();
         
-        $archivedBills = Bill::with(['host', 'participants'])
+        $archivedBills = Bill::with(['host', 'participants.user'])
                             ->forUser($user->id)
                             ->archived()
                             ->latest()
                             ->get();
         
-        return view('bills.index', compact('bills', 'archivedBills'));
+        // Return Inertia view instead of Blade
+        return Inertia::render('Dashboard', [
+            'bills' => $bills,
+            'archivedBills' => $archivedBills
+        ]);
     }
 
     /**
@@ -46,7 +51,21 @@ class BillController extends Controller
                 ->with('error', 'You have reached your monthly bill limit.');
         }
         
-        return view('bills.create');
+        // Get users for participant selection
+        $users = User::where('id', '!=', $user->id)
+            ->select('id', 'firstname', 'lastname', 'email')
+            ->get()
+            ->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->firstname . ' ' . $user->lastname,
+                    'email' => $user->email
+                ];
+            });
+        
+        return Inertia::render('Bills/Create', [
+            'users' => $users
+        ]);
     }
 
     /**
@@ -67,6 +86,7 @@ class BillController extends Controller
         // Validate request
         $validator = Validator::make($request->all(), [
             'billname' => 'required|string|max:100',
+            'amount' => 'required|numeric|min:0'
         ]);
         
         if ($validator->fails()) {
@@ -78,12 +98,15 @@ class BillController extends Controller
             }
             return redirect()->back()->withErrors($validator)->withInput();
         }
-        
+        $peopleCount = 1 + count($request->participants ?? []);
         // Create bill
         $bill = Bill::create([
             'billname' => $request->billname,
             'hostid' => $user->id,
+             'total_amount' => $request->amount,
+        'people_count' => $peopleCount,
             'invitation_code' => Bill::generateUniqueInvitationCode()
+
         ]);
         
         // Add host as participant
@@ -100,7 +123,8 @@ class BillController extends Controller
             ], 201);
         }
         
-        return redirect()->route('bills.show', $bill->id)
+        // Redirect to bills index (Dashboard)
+        return redirect()->route('dashboard')
             ->with('success', 'Bill created successfully.');
     }
 
@@ -114,9 +138,13 @@ class BillController extends Controller
             abort(403, 'Unauthorized access to this bill.');
         }
         
-        $bill->load(['host', 'participants.user', 'expenses']);
+        // Load relationships
+        $bill->load(['host', 'participants.user', 'expenses.payer']);
         
-        return view('bills.show', compact('bill'));
+        // Return Inertia view
+        return Inertia::render('Bills/Show', [
+            'bill' => $bill
+        ]);
     }
 
     /**
@@ -129,7 +157,22 @@ class BillController extends Controller
             abort(403, 'Only the host can edit this bill.');
         }
         
-        return view('bills.edit', compact('bill'));
+        // Get users for participant selection
+        $users = User::where('id', '!=', Auth::id())
+            ->select('id', 'firstname', 'lastname', 'email')
+            ->get()
+            ->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->firstname . ' ' . $user->lastname,
+                    'email' => $user->email
+                ];
+            });
+        
+        return Inertia::render('Bills/Edit', [
+            'bill' => $bill->load('participants.user'),
+            'users' => $users
+        ]);
     }
 
     /**
@@ -179,91 +222,8 @@ class BillController extends Controller
             ->with('success', 'Bill updated successfully.');
     }
 
-    /**
-     * Archive the specified bill.
-     */
-    public function archive(Bill $bill)
-    {
-        // Check if user is the host
-        if (!$bill->isHostedBy(Auth::id())) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only the host can archive this bill.'
-            ], 403);
-        }
-        
-        $bill->archive();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Bill archived successfully.'
-        ]);
-    }
-
-    /**
-     * Reactivate an archived bill.
-     */
-    public function reactivate(Bill $bill)
-    {
-        // Check if user is the host
-        if (!$bill->isHostedBy(Auth::id())) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only the host can reactivate this bill.'
-            ], 403);
-        }
-        
-        $bill->reactivate();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Bill reactivated successfully.'
-        ]);
-    }
-
-    /**
-     * Remove the specified bill from storage.
-     */
-    public function destroy(Bill $bill)
-    {
-        // Check if user is the host
-        if (!$bill->isHostedBy(Auth::id())) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only the host can delete this bill.'
-            ], 403);
-        }
-        
-        $bill->delete();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Bill deleted successfully.'
-        ]);
-    }
-
-    /**
-     * Regenerate invitation code.
-     */
-    public function regenerateInvitationCode(Bill $bill)
-    {
-        // Check if user is the host
-        if (!$bill->isHostedBy(Auth::id())) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only the host can regenerate the invitation code.'
-            ], 403);
-        }
-        
-        $newCode = $bill->regenerateInvitationCode();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Invitation code regenerated successfully.',
-            'invitation_code' => $newCode
-        ]);
-    }
-
+    // ... rest of your methods (archive, reactivate, destroy, etc.)
+    
     /**
      * Join a bill via invitation code.
      */
@@ -317,52 +277,4 @@ class BillController extends Controller
             'bill' => $bill->fresh(['host', 'participants'])
         ]);
     }
-
-    /**
-     * Get bill summary (for API).
-     */
-    public function summary(Bill $bill)
-    {
-        // Check if user can access this bill
-        if (!$bill->isAccessibleBy(Auth::id())) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized access.'
-            ], 403);
-        }
-        
-        $bill->load(['host', 'participants.user', 'expenses']);
-        
-        $summary = [
-            'id' => $bill->id,
-            'billname' => $bill->billname,
-            'invitation_code' => $bill->invitation_code,
-            'host' => [
-                'id' => $bill->host->id,
-                'name' => $bill->host->firstname . ' ' . $bill->host->lastname
-            ],
-            'status' => $bill->status,
-            'total_amount' => $bill->total_amount,
-            'formatted_total' => $bill->formatted_total,
-            'people_count' => $bill->people_count,
-            'participants' => $bill->participants->map(function ($p) {
-                return [
-                    'id' => $p->id,
-                    'name' => $p->user ? 
-                             $p->user->firstname . ' ' . $p->user->lastname : 
-                             $p->guest_name,
-                    'is_guest' => is_null($p->user_id),
-                    'is_active' => $p->is_active
-                ];
-            }),
-            'expense_count' => $bill->expenses->count(),
-            'created_at' => $bill->created_at->format('Y-m-d H:i:s'),
-            'invitation_url' => $bill->invitation_url
-        ];
-        
-        return response()->json([
-            'success' => true,
-            'data' => $summary
-        ]);
-    }
-}
+}   

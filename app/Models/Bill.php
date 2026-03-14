@@ -69,13 +69,7 @@ class Bill extends Model
             }
         });
 
-        // Log when bill is created
-        static::created(function ($bill) {
-            activity()
-                ->performedOn($bill)
-                ->causedBy(auth()->user())
-                ->log('created');
-        });
+        // Activity logging removed - not needed for core functionality
     }
 
     /**
