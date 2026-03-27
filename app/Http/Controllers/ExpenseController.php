@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/ExpenseController.php
 
 namespace App\Http\Controllers;
 
@@ -7,123 +6,119 @@ use App\Models\Bill;
 use App\Models\Expense;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Validator;
 
 class ExpenseController extends Controller
 {
     public function index(Bill $bill)
     {
         if (!$bill->isAccessibleBy(Auth::id())) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+            abort(403);
         }
 
-        $expenses = $bill->expenses()->with('payer')->latest()->get();
-
-        return response()->json($expenses);
+        return response()->json(
+            $bill->expenses()->with(['payer', 'guestPayer'])->latest()->get()
+        );
     }
 
     public function store(Request $request, Bill $bill)
     {
         if (!$bill->isAccessibleBy(Auth::id())) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+            abort(403);
         }
 
-        $validator = Validator::make($request->all(), [
-            'amount' => 'required|numeric|min:0.01',
-            'expense_date' => 'required|date',
-            'paid_by' => 'required|exists:users,id',
+        $request->validate([
+            'expense_name'  => ['required', 'string', 'max:255', 'regex:/^\S.*$/'],
+            'amount'        => ['required', 'numeric', 'min:0.01'],
+            'expense_date'  => ['required', 'date'],
+            'split_type'    => ['required', 'in:equal,custom'],
+            'split_with'    => ['nullable', 'array'],
+            'split_with.*'  => ['integer', 'exists:bill_participants,id'],
+            'paid_by_type'  => ['required', 'in:user,guest'],
+            'paid_by'       => ['nullable', 'exists:users,id'],
+            'guest_paid_by' => ['nullable', 'exists:bill_participants,id'],
         ]);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+        if ($request->paid_by_type === 'user') {
+            $isParticipant = $bill->participants()
+                ->where('user_id', $request->paid_by)
+                ->where('is_active', true)
+                ->exists();
+            if (!$isParticipant) {
+                return back()->withErrors(['paid_by' => 'Payer must be a participant.']);
+            }
         }
 
-        // Check if paid_by is a participant
-        $isParticipant = $bill->participants()
-                              ->where('user_id', $request->paid_by)
-                              ->where('is_active', true)
-                              ->exists();
-
-        if (!$isParticipant) {
-            return response()->json(['message' => 'Payer must be a participant'], 422);
+        // For custom split, require at least one participant selected
+        if ($request->split_type === 'custom' && empty($request->split_with)) {
+            return back()->withErrors(['split_with' => 'Select at least one participant for custom split.']);
         }
 
         $expense = Expense::create([
-            'bill_id' => $bill->id,
-            'paid_by' => $request->paid_by,
-            'amount' => $request->amount,
-            'expense_date' => $request->expense_date,
+            'bill_id'       => $bill->id,
+            'expense_name'  => $request->expense_name,
+            'paid_by'       => $request->paid_by_type === 'user' ? $request->paid_by : null,
+            'guest_paid_by' => $request->paid_by_type === 'guest' ? $request->guest_paid_by : null,
+            'amount'        => $request->amount,
+            'split_type'    => $request->split_type,
+            'split_with'    => $request->split_type === 'custom' ? $request->split_with : null,
+            'expense_date'  => $request->expense_date,
         ]);
 
-        // Update bill total
-        $bill->total_amount += $request->amount;
-        $bill->save();
+        $bill->increment('total_amount', $request->amount);
 
-        return response()->json([
-            'message' => 'Expense created',
-            'expense' => $expense->load('payer')
-        ], 201);
+        return back()->with('success', 'Expense added.');
     }
 
     public function update(Request $request, Bill $bill, Expense $expense)
     {
-        if (!$bill->isAccessibleBy(Auth::id()) || $expense->bill_id !== $bill->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        if (!$bill->isHostedBy(Auth::id()) || $expense->bill_id !== $bill->id) {
+            abort(403);
         }
 
-        $validator = Validator::make($request->all(), [
-            'amount' => 'sometimes|numeric|min:0.01',
-            'expense_date' => 'sometimes|date',
+        $request->validate([
+            'expense_name'  => ['required', 'string', 'max:255', 'regex:/^\S.*$/'],
+            'amount'        => ['required', 'numeric', 'min:0.01'],
+            'expense_date'  => ['required', 'date'],
+            'split_type'    => ['required', 'in:equal,custom'],
+            'split_with'    => ['nullable', 'array'],
+            'split_with.*'  => ['integer', 'exists:bill_participants,id'],
+            'paid_by_type'  => ['required', 'in:user,guest'],
+            'paid_by'       => ['nullable', 'exists:users,id'],
+            'guest_paid_by' => ['nullable', 'exists:bill_participants,id'],
         ]);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+        if ($request->split_type === 'custom' && empty($request->split_with)) {
+            return back()->withErrors(['split_with' => 'Select at least one participant for custom split.']);
         }
 
-        // Update bill total if amount changed
-        if ($request->has('amount') && $request->amount != $expense->amount) {
-            $bill->total_amount = $bill->total_amount - $expense->amount + $request->amount;
-            $bill->save();
-        }
+        $amountDiff = $request->amount - $expense->amount;
 
-        $expense->update($request->only(['amount', 'expense_date']));
-
-        return response()->json([
-            'message' => 'Expense updated',
-            'expense' => $expense->fresh('payer')
+        $expense->update([
+            'expense_name'  => $request->expense_name,
+            'paid_by'       => $request->paid_by_type === 'user' ? $request->paid_by : null,
+            'guest_paid_by' => $request->paid_by_type === 'guest' ? $request->guest_paid_by : null,
+            'amount'        => $request->amount,
+            'split_type'    => $request->split_type,
+            'split_with'    => $request->split_type === 'custom' ? $request->split_with : null,
+            'expense_date'  => $request->expense_date,
         ]);
+
+        if ($amountDiff != 0) {
+            $bill->increment('total_amount', $amountDiff);
+        }
+
+        return back()->with('success', 'Expense updated.');
     }
 
     public function destroy(Bill $bill, Expense $expense)
     {
-        if (!$bill->isAccessibleBy(Auth::id()) || $expense->bill_id !== $bill->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        if (!$bill->isHostedBy(Auth::id()) || $expense->bill_id !== $bill->id) {
+            abort(403);
         }
 
-        $bill->total_amount -= $expense->amount;
-        $bill->save();
-
+        $bill->decrement('total_amount', $expense->amount);
         $expense->delete();
 
-        return response()->json(['message' => 'Expense deleted']);
-    }
-
-    public function summary(Bill $bill)
-    {
-        if (!$bill->isAccessibleBy(Auth::id())) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $expenses = $bill->expenses;
-        $total = $expenses->sum('amount');
-        $sharePerPerson = $bill->people_count > 0 ? $total / $bill->people_count : 0;
-
-        return response()->json([
-            'total' => $total,
-            'formatted_total' => '$' . number_format($total, 2),
-            'share_per_person' => $sharePerPerson,
-            'formatted_share' => '$' . number_format($sharePerPerson, 2),
-            'expense_count' => $expenses->count(),
-        ]);
+        return back()->with('success', 'Expense deleted.');
     }
 }

@@ -229,21 +229,22 @@ class Bill extends Model
      */
     public function addParticipant($userId, $addedBy = null)
     {
-        // Check if user is already a participant
         if ($this->participants()->where('user_id', $userId)->where('is_active', true)->exists()) {
             return false;
         }
-        
+
+        if ($this->host && $this->host->usertype === 'standard' && $this->people_count >= 3) {
+            throw new \Exception('Standard users can only have up to 3 people per bill.');
+        }
+
         $participant = $this->participants()->create([
-            'bill_id' => $this->id,
-            'user_id' => $userId,
-            'added_by' => $addedBy ?? auth()->id() ?? $this->hostid,
-            'is_active' => true
+            'bill_id'  => $this->id,
+            'user_id'  => $userId,
+            'is_active' => true,
         ]);
-        
-        // Update people count
+
         $this->increment('people_count');
-        
+
         return $participant;
     }
 

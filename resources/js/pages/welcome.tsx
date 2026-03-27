@@ -131,10 +131,10 @@ export default function Welcome({
                                                 Get Started Free
                                             </Link>
                                             <Link
-                                                href="#welcome"
+                                                href="/guest/lookup"
                                                 className="rounded-lg border-2 border-gray-300 bg-transparent px-8 py-4 text-base font-semibold text-gray-700 transition-all hover:border-indigo-600 hover:text-indigo-600 dark:border-gray-600 dark:text-gray-300 dark:hover:border-indigo-400 dark:hover:text-indigo-400"
                                             >
-                                                Learn More
+                                                Join as Guest
                                             </Link>
                                         </>
                                     )}

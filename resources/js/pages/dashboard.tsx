@@ -1,505 +1,348 @@
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { PlaceholderPattern } from '@/components/ui/placeholder-pattern';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
-import { Button } from '@/components/ui/button';
-import { Plus, Users, Copy, Check, AlertCircle, X, UserPlus, RefreshCw } from 'lucide-react';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+    Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Plus, Users, Copy, Check, RefreshCw, Archive, Trash2, Eye, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
 
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Dashboard',
-        href: '/dashboard',
-    },
-];
+const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' }];
 
-// Define the Bill interface based on your model
+interface Participant { type: 'user' | 'guest'; user_id?: number; guest_firstname?: string; guest_lastname?: string; guest_email?: string; }
 interface Bill {
-    id: number;
-    billname: string;
-    invitation_code: string;
-    hostid: number;
-    status: 'active' | 'archived';
-    total_amount: number;
-    people_count: number;
-    formatted_total?: string;
-    status_label?: string;
-    invitation_url?: string;
-    host?: {
-        id: number;
-        firstname: string;
-        lastname: string;
-    };
+    id: number; billname: string; invitation_code: string; hostid: number;
+    status: 'active' | 'archived'; total_amount: number; people_count: number;
+    is_host: boolean;
 }
-
-interface User {
-    id: number;
-    firstname: string;
-    lastname: string;
-    email: string;
-}
-
+interface User { id: number; name: string; email: string; }
 interface Props {
-    bills: Bill[];
-    archivedBills?: Bill[];
-    users: User[];
-    flash?: {
-        success?: string;
-        error?: string;
-    };
+    bills: Bill[]; archivedBills: Bill[]; users: User[];
+    usertype: string; canCreateBill: boolean; hostedCount: number;
+    flash?: { success?: string; error?: string };
 }
 
-// Define form data interface
-interface FormData {
-    billname: string;
-    amount: string;
-    participants: number[];
-}
-
-export default function Dashboard({ bills = [], archivedBills = [], users = [], flash }: Props) {
-    const [open, setOpen] = useState(false);
+export default function Dashboard({ bills = [], archivedBills = [], users = [], usertype, canCreateBill, hostedCount, flash }: Props) {
+    const [createOpen, setCreateOpen] = useState(false);
     const [copiedCode, setCopiedCode] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [selectedParticipants, setSelectedParticipants] = useState<number[]>([]);
-    const [generatedCode, setGeneratedCode] = useState<string>('');
-    const [showGeneratedCode, setShowGeneratedCode] = useState(false);
-    
-    const { data, setData, post, processing, errors, reset } = useForm<FormData>({
+    const [participants, setParticipants] = useState<Participant[]>([]);
+
+    const { data, setData, post, processing, errors, reset } = useForm({
         billname: '',
-        amount: '',
-        participants: [],
+        participants: [] as Participant[],
     });
 
-    const handleCreateBill = (e: React.FormEvent) => {
+    const maxParticipants = usertype === 'premium' ? Infinity : 3;
+
+    const addUserParticipant = (userId: number) => {
+        if (participants.length + 1 >= maxParticipants) return;
+        if (participants.some(p => p.type === 'user' && p.user_id === userId)) return;
+        const updated = [...participants, { type: 'user' as const, user_id: userId }];
+        setParticipants(updated);
+        setData('participants', updated);
+    };
+
+    const addGuestParticipant = () => {
+        if (participants.length + 1 >= maxParticipants) return;
+        const updated = [...participants, { type: 'guest' as const, guest_firstname: '', guest_lastname: '', guest_email: '' }];
+        setParticipants(updated);
+        setData('participants', updated);
+    };
+
+    const updateGuestField = (index: number, field: 'guest_firstname' | 'guest_lastname' | 'guest_email', value: string) => {
+        const updated = participants.map((p, i) => i === index ? { ...p, [field]: value } : p);
+        setParticipants(updated);
+        setData('participants', updated);
+    };
+
+    const removeParticipant = (index: number) => {
+        const updated = participants.filter((_, i) => i !== index);
+        setParticipants(updated);
+        setData('participants', updated);
+    };
+
+    const handleCreate = (e: React.FormEvent) => {
         e.preventDefault();
-        setError(null);
-        
-        // Include participants in the form data
-        const formData = {
-            ...data,
-            participants: selectedParticipants,
-        };
-        
         post('/bills', {
-    preserveScroll: true,
-    onSuccess: (page) => {
-        setOpen(false);
-        reset();
-        setSelectedParticipants([]);
-        setGeneratedCode('');
-        setShowGeneratedCode(false);
-        console.log('Bill created successfully');
-    },
-    onError: (errors) => {
-        console.log('Creation failed:', errors);
-        if (errors.message) {
-            setError(errors.message);
-        }
-    },
-});
+            onSuccess: () => { setCreateOpen(false); reset(); setParticipants([]); },
+        });
     };
 
-    const handleGenerateCode = () => {
-        // Generate a random 8-character code
-        const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        let code = '';
-        for (let i = 0; i < 8; i++) {
-            code += characters.charAt(Math.floor(Math.random() * characters.length));
-        }
-        setGeneratedCode(code);
-        setShowGeneratedCode(true);
-    };
-
-    const copyInvitationCode = (code: string) => {
+    const copyCode = (code: string) => {
         navigator.clipboard.writeText(code);
         setCopiedCode(code);
         setTimeout(() => setCopiedCode(null), 2000);
     };
 
-    const addParticipant = (userId: number) => {
-        if (!selectedParticipants.includes(userId)) {
-            setSelectedParticipants([...selectedParticipants, userId]);
-            setData('participants', [...selectedParticipants, userId]);
-        }
-    };
+    const archiveBill = (id: number) => router.patch(`/bills/${id}/archive`);
+    const unarchiveBill = (id: number) => router.patch(`/bills/${id}/unarchive`);
+    const deleteBill = (id: number) => { if (confirm('Delete this bill?')) router.delete(`/bills/${id}`); };
+    const regenerateCode = (id: number) => router.post(`/bills/${id}/regenerate-code`);
 
-    const removeParticipant = (userId: number) => {
-        setSelectedParticipants(selectedParticipants.filter(id => id !== userId));
-        setData('participants', selectedParticipants.filter(id => id !== userId));
-    };
-
-    const getStatusColor = (status: string) => {
-        switch(status) {
-            case 'active': return 'text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400';
-            case 'archived': return 'text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400';
-            default: return 'text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-400';
-        }
-    };
-
-    const viewBill = (billId: number) => {
-        router.visit(`/bills/${billId}`);
-    };
-
-    // Calculate split amount per person
-    const totalAmount = parseFloat(data.amount) || 0;
-    const participantCount = selectedParticipants.length + 1; // +1 for the host
-    const amountPerPerson = participantCount > 0 ? totalAmount / participantCount : 0;
+    const availableUsers = users.filter(u => !participants.some(p => p.type === 'user' && p.user_id === u.id));
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Dashboard" />
-            <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
-                {/* Flash Messages */}
-                {(flash?.success || flash?.error) && (
-                    <Alert variant={flash.error ? "destructive" : "default"} className="mb-4">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>
-                            {flash.success || flash.error}
-                        </AlertDescription>
-                    </Alert>
+            <div className="min-h-full bg-background p-6">
+
+                {/* Flash messages */}
+                {flash?.success && (
+                    <div className="mb-6 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-400">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        {flash.success}
+                    </div>
+                )}
+                {flash?.error && (
+                    <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {flash.error}
+                    </div>
                 )}
 
-                {/* Page Title */}
-                <div className="flex items-center justify-between">
-                    <h1 className="text-2xl font-bold">My Bills</h1>
-                    <div className="text-sm text-muted-foreground">
-                        Total: {bills.length + archivedBills.length} {bills.length + archivedBills.length === 1 ? 'bill' : 'bills'}
+                {/* Header */}
+                <div className="mb-6 flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-bold text-foreground">My Bills</h1>
+                        {usertype === 'standard' && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">Standard plan · {hostedCount}/5 bills this month · max 3 people/bill</p>
+                        )}
                     </div>
-                </div>
-
-                {/* Bills Grid with Add Bill Card */}
-                <div className="grid auto-rows-min gap-4 md:grid-cols-3">
-                    {/* Add Bill Card - First in the grid */}
-                    <Dialog open={open} onOpenChange={setOpen}>
-                        <DialogTrigger asChild>
-                            <div className="relative aspect-video cursor-pointer overflow-hidden rounded-xl border-2 border-dashed border-sidebar-border/70 transition-colors hover:border-primary/50 hover:bg-accent/50 dark:border-sidebar-border">
-                                <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
-                                    <div className="rounded-full bg-primary/10 p-3">
-                                        <Plus className="h-6 w-6 text-primary" />
-                                    </div>
-                                    <span className="font-medium">Create New Bill</span>
-                                    <span className="text-xs text-muted-foreground">
-                                        Start a new bill to split with friends
-                                    </span>
-                                </div>
-                            </div>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-                            <form onSubmit={handleCreateBill}>
-                                <DialogHeader>
-                                    <DialogTitle>Create New Bill</DialogTitle>
-                                    <DialogDescription>
-                                        Create a new bill to split expenses with friends. Add participants and set the total amount.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                
-                                <div className="grid gap-4 py-4">
-                                    {/* Bill Name */}
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="billname">
-                                            Bill Name <span className="text-red-500">*</span>
-                                        </Label>
-                                        <Input
-                                            id="billname"
-                                            placeholder="e.g., Weekend Trip, Dinner at Restaurant"
-                                            value={data.billname}
-                                            onChange={e => setData('billname', e.target.value)}
-                                            required
-                                            autoFocus
-                                        />
-                                        {errors.billname && (
-                                            <p className="text-xs text-red-500">{errors.billname}</p>
-                                        )}
-                                    </div>
-
-                                    {/* Total Amount */}
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="amount">
-                                            Total Amount <span className="text-red-500">*</span>
-                                        </Label>
-                                        <div className="relative">
+                    {canCreateBill && (
+                        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                            <DialogTrigger asChild>
+                                <Button>
+                                    <Plus className="h-4 w-4" /> New Bill
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+                                <form onSubmit={handleCreate}>
+                                    <DialogHeader>
+                                        <DialogTitle>Create New Bill</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="grid gap-4 py-4">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="billname">Bill Name <span className="text-red-500">*</span></Label>
                                             <Input
-                                                id="amount"
-                                                type="number"
-                                                step="0.01"
-                                                min="0"
-                                                placeholder="0.00"
-                                                value={data.amount}
-                                                onChange={e => setData('amount', e.target.value)}
-                                                className="pl-7"
+                                                id="billname"
+                                                placeholder="e.g., Weekend Trip"
+                                                value={data.billname}
+                                                onChange={e => setData('billname', e.target.value)}
                                                 required
                                             />
+                                            {errors.billname && <p className="text-xs text-red-500">{errors.billname}</p>}
                                         </div>
-                                        {errors.amount && (
-                                            <p className="text-xs text-red-500">{errors.amount}</p>
-                                        )}
-                                    </div>
 
-                                    {/* Generate Code Button */}
-                                    <div className="grid gap-2">
-                                        <Label>Invitation Code</Label>
-                                        <div className="flex gap-2">
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={handleGenerateCode}
-                                                className="flex-1"
-                                            >
-                                                <RefreshCw className="mr-2 h-4 w-4" />
-                                                Generate Code
-                                            </Button>
-                                            {showGeneratedCode && (
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    onClick={() => copyInvitationCode(generatedCode)}
-                                                    className="flex-none"
-                                                >
-                                                    {copiedCode === generatedCode ? (
-                                                        <Check className="h-4 w-4 text-green-500" />
-                                                    ) : (
-                                                        <Copy className="h-4 w-4" />
+                                        <div className="grid gap-2">
+                                            <div className="flex items-center justify-between">
+                                                <Label>
+                                                    Participants ({participants.length + 1}/{maxParticipants === Infinity ? '∞' : maxParticipants})
+                                                </Label>
+                                                <div className="flex gap-2">
+                                                    {availableUsers.length > 0 && participants.length + 1 < maxParticipants && (
+                                                        <Select onValueChange={v => addUserParticipant(parseInt(v))}>
+                                                            <SelectTrigger className="h-7 w-36 text-xs">
+                                                                <SelectValue placeholder="Add user" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {availableUsers.map(u => (
+                                                                    <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
                                                     )}
-                                                </Button>
-                                            )}
-                                        </div>
-                                        {showGeneratedCode && (
-                                            <p className="text-sm font-mono bg-muted p-2 rounded text-center">
-                                                {generatedCode}
-                                            </p>
-                                        )}
-                                    </div>
+                                                    {participants.length + 1 < maxParticipants && (
+                                                        <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={addGuestParticipant}>
+                                                            + Guest
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
 
-                                    {/* Add Participants */}
-                                    <div className="grid gap-2">
-                                        <Label>Add Participants</Label>
-                                        <div className="flex gap-2">
-                                            <Select onValueChange={(value) => addParticipant(parseInt(value))}>
-                                                <SelectTrigger className="flex-1">
-                                                    <SelectValue placeholder="Select a user to add" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {users.map((user) => (
-                                                        <SelectItem 
-                                                            key={user.id} 
-                                                            value={user.id.toString()}
-                                                            disabled={selectedParticipants.includes(user.id)}
-                                                        >
-                                                            {user.firstname} {user.lastname} ({user.email})
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
+                                            <div className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
+                                                You (host)
+                                            </div>
 
-                                        {/* Selected Participants List */}
-                                        {selectedParticipants.length > 0 && (
-                                            <div className="mt-2 space-y-2">
-                                                <Label>Selected Participants:</Label>
-                                                <div className="space-y-2">
-                                                    {selectedParticipants.map((userId) => {
-                                                        const user = users.find(u => u.id === userId);
-                                                        return (
-                                                            <div key={userId} className="flex items-center justify-between bg-muted p-2 rounded">
-                                                                <span>
-                                                                    {user?.firstname} {user?.lastname}
-                                                                </span>
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    onClick={() => removeParticipant(userId)}
-                                                                >
-                                                                    <X className="h-4 w-4" />
-                                                                </Button>
+                                            {participants.map((p, i) => (
+                                                <div key={i} className="flex items-start gap-2">
+                                                    {p.type === 'user' ? (
+                                                        <div className="flex-1 rounded-md bg-muted p-2 text-xs">
+                                                            {users.find(u => u.id === p.user_id)?.name}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex-1 grid gap-1.5">
+                                                            <div className="grid grid-cols-2 gap-1.5">
+                                                                <Input
+                                                                    className="h-8 text-xs"
+                                                                    placeholder="First name *"
+                                                                    value={p.guest_firstname}
+                                                                    onChange={e => updateGuestField(i, 'guest_firstname', e.target.value)}
+                                                                    required
+                                                                />
+                                                                <Input
+                                                                    className="h-8 text-xs"
+                                                                    placeholder="Last name *"
+                                                                    value={p.guest_lastname}
+                                                                    onChange={e => updateGuestField(i, 'guest_lastname', e.target.value)}
+                                                                    required
+                                                                />
                                                             </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Split Preview */}
-                                    {totalAmount > 0 && (
-                                        <div className="mt-2 rounded-lg border border-sidebar-border/50 bg-sidebar-border/5 p-3">
-                                            <p className="mb-2 text-xs font-medium text-muted-foreground">Split Preview</p>
-                                            <div className="space-y-1 text-sm">
-                                                <div className="flex justify-between">
-                                                    <span className="text-muted-foreground">Total Amount:</span>
-                                                    <span className="font-medium">${totalAmount.toFixed(2)}</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-muted-foreground">Participants:</span>
-                                                    <span className="font-medium">{participantCount} (including you)</span>
-                                                </div>
-                                                <div className="flex justify-between border-t pt-1 mt-1">
-                                                    <span className="text-muted-foreground">Each Pays:</span>
-                                                    <span className="font-bold text-primary">${amountPerPerson.toFixed(2)}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                
-                                <DialogFooter className="sm:justify-between">
-                                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                                        Cancel
-                                    </Button>
-                                    <Button type="submit" disabled={processing}>
-                                        {processing ? 'Creating...' : 'Create Bill'}
-                                    </Button>
-                                </DialogFooter>
-                            </form>
-                        </DialogContent>
-                    </Dialog>
-
-                    {/* Active Bills */}
-                    {bills.length > 0 ? (
-                        bills.map((bill) => (
-                            <div 
-                                key={bill.id}
-                                className="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 transition-all hover:shadow-md cursor-pointer dark:border-sidebar-border"
-                                onClick={() => viewBill(bill.id)}
-                            >
-                                <div className="absolute inset-0 flex flex-col p-4">
-                                    <div className="flex items-start justify-between">
-                                        <h3 className="font-semibold line-clamp-1">{bill.billname}</h3>
-                                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getStatusColor(bill.status)}`}>
-                                            {bill.status_label || bill.status}
-                                        </span>
-                                    </div>
-                                    
-                                    <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                                        <Users className="h-3 w-3" />
-                                        <span>{bill.people_count} {bill.people_count === 1 ? 'person' : 'people'}</span>
-                                    </div>
-                                    
-                                    <div className="mt-auto">
-                                        <div className="mb-2 flex items-center justify-between">
-                                            <span className="text-sm font-medium">
-                                                {bill.formatted_total || `$${Number(bill.total_amount).toFixed(2)}`}
-                                            </span>
-                                        </div>
-                                        
-                                        <div className="flex items-center justify-between border-t border-sidebar-border/30 pt-2">
-                                            <div className="flex items-center gap-1">
-                                                <span className="font-mono text-xs text-muted-foreground">
-                                                    {bill.invitation_code}
-                                                </span>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        copyInvitationCode(bill.invitation_code);
-                                                    }}
-                                                    className="rounded p-1 hover:bg-sidebar-border/10"
-                                                    title="Copy invitation code"
-                                                >
-                                                    {copiedCode === bill.invitation_code ? (
-                                                        <Check className="h-3 w-3 text-green-500" />
-                                                    ) : (
-                                                        <Copy className="h-3 w-3 text-muted-foreground" />
+                                                            <Input
+                                                                className="h-8 text-xs"
+                                                                type="email"
+                                                                placeholder="Email address *"
+                                                                value={p.guest_email}
+                                                                onChange={e => updateGuestField(i, 'guest_email', e.target.value)}
+                                                                required
+                                                            />
+                                                        </div>
                                                     )}
-                                                </button>
-                                            </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-6 text-xs"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    viewBill(bill.id);
-                                                }}
-                                            >
-                                                View
-                                            </Button>
+                                                    <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 mt-0.5" onClick={() => removeParticipant(i)}>
+                                                        <X className="h-3 w-3" />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                            {errors.participants && <p className="text-xs text-red-500">{errors.participants}</p>}
                                         </div>
                                     </div>
-                                </div>
-                                <PlaceholderPattern className="absolute inset-0 -z-10 size-full stroke-neutral-900/20 dark:stroke-neutral-100/20" />
-                            </div>
-                        ))
-                    ) : (
-                        // Show empty state if no active bills
-                        <div className="col-span-3 flex flex-col items-center justify-center rounded-xl border border-dashed border-sidebar-border/70 p-8 text-center">
-                            <Users className="mb-2 h-8 w-8 text-muted-foreground" />
-                            <h3 className="font-medium">No active bills yet</h3>
-                            <p className="text-sm text-muted-foreground">
-                                Create your first bill to start splitting expenses
-                            </p>
-                        </div>
+                                    <DialogFooter>
+                                        <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                                        <Button type="submit" disabled={processing}>
+                                            {processing ? 'Creating...' : 'Create Bill'}
+                                        </Button>
+                                    </DialogFooter>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
                     )}
                 </div>
 
-                {/* Archived Bills Section (if any) */}
+                {/* Limit message */}
+                {!canCreateBill && bills.length === 0 && (
+                    <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
+                        Monthly bill limit reached. Upgrade to Premium for unlimited bills.
+                    </div>
+                )}
+
+                {/* Active Bills */}
+                {bills.length === 0 && canCreateBill ? (
+                    <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border bg-card/60 py-16 text-center">
+                        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-900/40">
+                            <Plus className="h-7 w-7 text-indigo-600 dark:text-indigo-400" />
+                        </div>
+                        <p className="font-semibold text-foreground">No bills yet</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Click "New Bill" to get started</p>
+                    </div>
+                ) : (
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {bills.map(bill => (
+                            <BillCard
+                                key={bill.id}
+                                bill={bill}
+                                copiedCode={copiedCode}
+                                onCopy={copyCode}
+                                onView={() => router.visit(`/bills/${bill.id}`)}
+                                onArchive={bill.is_host ? () => archiveBill(bill.id) : undefined}
+                                onDelete={bill.is_host ? () => deleteBill(bill.id) : undefined}
+                                onRegenerate={bill.is_host ? () => regenerateCode(bill.id) : undefined}
+                            />
+                        ))}
+                    </div>
+                )}
+
+                {/* Archived Bills */}
                 {archivedBills.length > 0 && (
-                    <div className="mt-8">
-                        <h2 className="mb-4 text-xl font-semibold">Archived Bills</h2>
-                        <div className="grid auto-rows-min gap-4 md:grid-cols-3">
-                            {archivedBills.map((bill) => (
-                                <div 
+                    <div className="mt-10">
+                        <h2 className="mb-4 text-lg font-semibold text-foreground">Archived Bills</h2>
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {archivedBills.map(bill => (
+                                <BillCard
                                     key={bill.id}
-                                    className="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 opacity-75 transition-all hover:shadow-md cursor-pointer dark:border-sidebar-border"
-                                    onClick={() => viewBill(bill.id)}
-                                >
-                                    <div className="absolute inset-0 flex flex-col p-4">
-                                        <div className="flex items-start justify-between">
-                                            <h3 className="font-semibold line-clamp-1">{bill.billname}</h3>
-                                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getStatusColor(bill.status)}`}>
-                                                {bill.status_label || bill.status}
-                                            </span>
-                                        </div>
-                                        
-                                        <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                                            <Users className="h-3 w-3" />
-                                            <span>{bill.people_count} {bill.people_count === 1 ? 'person' : 'people'}</span>
-                                        </div>
-                                        
-                                        <div className="mt-auto">
-                                            <div className="mb-2 flex items-center justify-between">
-                                                <span className="text-sm font-medium">
-                                                    {bill.formatted_total || `$${Number(bill.total_amount).toFixed(2)}`}
-                                                </span>
-                                            </div>
-                                            
-                                            <div className="flex items-center justify-between border-t border-sidebar-border/30 pt-2">
-                                                <span className="font-mono text-xs text-muted-foreground">
-                                                    {bill.invitation_code}
-                                                </span>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 text-xs"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        viewBill(bill.id);
-                                                    }}
-                                                >
-                                                    View
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <PlaceholderPattern className="absolute inset-0 -z-10 size-full stroke-neutral-900/20 dark:stroke-neutral-100/20" />
-                                </div>
+                                    bill={bill}
+                                    archived
+                                    copiedCode={copiedCode}
+                                    onCopy={copyCode}
+                                    onView={() => router.visit(`/bills/${bill.id}`)}
+                                    onUnarchive={bill.is_host ? () => unarchiveBill(bill.id) : undefined}
+                                    onDelete={bill.is_host ? () => deleteBill(bill.id) : undefined}
+                                    onRegenerate={bill.is_host ? () => regenerateCode(bill.id) : undefined}
+                                />
                             ))}
                         </div>
                     </div>
                 )}
             </div>
         </AppLayout>
+    );
+}
+
+function BillCard({ bill, archived = false, copiedCode, onCopy, onView, onArchive, onUnarchive, onDelete, onRegenerate }: {
+    bill: Bill; archived?: boolean; copiedCode: string | null;
+    onCopy: (c: string) => void; onView: () => void;
+    onArchive?: () => void; onUnarchive?: () => void;
+    onDelete?: () => void; onRegenerate?: () => void;
+}) {
+    return (
+        <div className={`flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-sm ring-1 ring-border transition hover:shadow-md ${archived ? 'opacity-70' : ''}`}>
+            <div className="flex items-start justify-between gap-2">
+                <h3 className="font-semibold text-card-foreground leading-tight">{bill.billname}</h3>
+                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    archived ? 'bg-gray-100 text-gray-600' : 'bg-green-100 text-green-700'
+                }`}>
+                    {archived ? 'Archived' : 'Active'}
+                </span>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                    <Users className="h-3.5 w-3.5" />
+                    {bill.people_count} {bill.people_count === 1 ? 'person' : 'people'}
+                </span>
+                <span className="font-semibold text-foreground">₱{Number(bill.total_amount).toFixed(2)}</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 dark:bg-indigo-950/40">
+                <span className="flex-1 font-mono text-xs text-indigo-700 dark:text-indigo-300">{bill.invitation_code}</span>
+                <button onClick={() => onCopy(bill.invitation_code)} title="Copy code"
+                    className="rounded p-0.5 text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-200">
+                    {copiedCode === bill.invitation_code ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+                {onRegenerate && (
+                    <button onClick={onRegenerate} title="Regenerate code"
+                        className="rounded p-0.5 text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-200">
+                        <RefreshCw className="h-3.5 w-3.5" />
+                    </button>
+                )}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+                <button onClick={onView}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-700">
+                    <Eye className="h-3.5 w-3.5" /> View
+                </button>
+                {!archived && onArchive && (
+                    <button onClick={onArchive} title="Archive"
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted">
+                        <Archive className="h-3.5 w-3.5" />
+                    </button>
+                )}
+                {archived && onUnarchive && (
+                    <button onClick={onUnarchive}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted">
+                        Restore
+                    </button>
+                )}
+                {onDelete && (
+                    <button onClick={onDelete} title="Delete"
+                        className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/30">
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                )}
+            </div>
+        </div>
     );
 }

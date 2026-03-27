@@ -2,8 +2,10 @@ export type User = {
     id: number;
     firstname: string;
     lastname: string;
+    nickname: string;
     username: string;
     email: string;
+    usertype: 'guest' | 'standard' | 'premium';
     avatar?: string;
     email_verified_at: string | null;
     two_factor_enabled?: boolean;

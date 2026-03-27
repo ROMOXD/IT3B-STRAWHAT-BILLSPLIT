@@ -27,18 +27,19 @@ class BillParticipant extends Model
         'bill_id',
         'user_id',
         'is_active',
-        'guest_name',
+        'guest_firstname',
+        'guest_lastname',
+        'guest_nickname',
+        'guest_email',
+        'guest_token',
+        'guest_expires_at',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
-        'is_active' => 'boolean',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'is_active'        => 'boolean',
+        'guest_expires_at' => 'datetime',
+        'created_at'       => 'datetime',
+        'updated_at'       => 'datetime',
     ];
 
     /**
@@ -104,8 +105,21 @@ class BillParticipant extends Model
         if ($this->user) {
             return $this->user->firstname . ' ' . $this->user->lastname;
         }
-        
-        return $this->guest_name ?? 'Unknown Guest';
+        $name = trim(($this->guest_firstname ?? '') . ' ' . ($this->guest_lastname ?? ''));
+        return $name ?: 'Unknown Guest';
+    }
+
+    public function isGuestAccessExpired(): bool
+    {
+        return $this->guest_expires_at && now()->isAfter($this->guest_expires_at);
+    }
+
+    public function refreshGuestAccess(): void
+    {
+        $this->update([
+            'guest_token'      => bin2hex(random_bytes(32)),
+            'guest_expires_at' => now()->addHours(6),
+        ]);
     }
 
     /**
