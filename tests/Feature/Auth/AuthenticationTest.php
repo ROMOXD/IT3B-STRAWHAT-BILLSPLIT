@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\Bill;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Fortify\Features;
 use Tests\TestCase;
@@ -30,6 +32,37 @@ class AuthenticationTest extends TestCase
 
         $this->assertAuthenticated();
         $response->assertRedirect(route('dashboard', absolute: false));
+    }
+
+    public function test_returning_guest_otp_verification_redirects_to_dashboard_after_email_verified()
+    {
+        Mail::fake();
+
+        $guest = User::factory()->unverified()->create([
+            'usertype' => 'guest',
+            'bill_id' => null,
+        ]);
+
+        $response = $this->post('/guest/login', ['email' => $guest->email]);
+        $response->assertRedirect(route('guest.otp', absolute: false));
+
+        $guest->refresh();
+
+        $this->assertNotNull($guest->email_verification_code);
+
+        $verifyResponse = $this->post('/guest/otp', ['code' => $guest->email_verification_code]);
+        $verifyResponse->assertRedirect(route('dashboard', absolute: false));
+
+        $this->assertAuthenticatedAs($guest);
+        $this->assertNotNull($guest->fresh()->email_verified_at);
+    }
+
+    public function test_returning_guest_nonexistent_email_returns_generic_error()
+    {
+        $response = $this->from('/')->post('/guest/login', ['email' => 'notfound@example.com']);
+
+        $response->assertRedirect('/');
+        $response->assertSessionHasErrors(['email' => 'The provided credentials are incorrect.']);
     }
 
     public function test_users_with_two_factor_enabled_are_redirected_to_two_factor_challenge()

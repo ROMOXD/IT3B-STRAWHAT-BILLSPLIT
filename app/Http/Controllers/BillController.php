@@ -13,23 +13,23 @@ class BillController extends Controller
 {
     public function index()
     {
-        $user = Auth::user();
+        $user   = Auth::user();
+        $userId = $user->id;
 
-        $bills = Bill::with(['host', 'participants.user'])
-            ->forUser($user->id)
-            ->active()
+        [$bills, $archivedBills] = Bill::with(['host', 'participants.user'])
+            ->forUser($userId)
             ->latest()
-            ->get();
+            ->get()
+            ->partition(fn($b) => $b->status === 'active');
 
-        $archivedBills = Bill::with(['host', 'participants.user'])
-            ->forUser($user->id)
-            ->archived()
-            ->latest()
-            ->get();
+        $hostedThisMonth = $user->hostedBills()
+            ->whereMonth('created_at', now()->month)
+            ->whereYear('created_at', now()->year)
+            ->count();
 
-        $users = User::where('id', '!=', $user->id)
-            ->where('usertype', '!=', 'guest')
-            ->select('id', 'firstname', 'lastname', 'email', 'username')
+        $users = User::where('id', '!=', $userId)
+            ->whereIn('usertype', ['standard', 'premium'])
+            ->select('id', 'firstname', 'lastname', 'email')
             ->get()
             ->map(fn($u) => [
                 'id'    => $u->id,
@@ -37,15 +37,13 @@ class BillController extends Controller
                 'email' => $u->email,
             ]);
 
-        $userId = $user->id;
-
         return Inertia::render('dashboard', [
-            'bills'         => $bills->map(fn($b) => array_merge($b->toArray(), ['is_host' => $b->hostid === $userId])),
-            'archivedBills' => $archivedBills->map(fn($b) => array_merge($b->toArray(), ['is_host' => $b->hostid === $userId])),
+            'bills'         => $bills->map(fn($b) => array_merge($b->toArray(), ['is_host' => $b->hostid === $userId]))->values(),
+            'archivedBills' => $archivedBills->map(fn($b) => array_merge($b->toArray(), ['is_host' => $b->hostid === $userId]))->values(),
             'users'         => $users,
             'usertype'      => $user->usertype,
             'canCreateBill' => $user->canCreateBill(),
-            'hostedCount'   => $user->hostedBills()->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year)->count(),
+            'hostedCount'   => $hostedThisMonth,
         ]);
     }
 
@@ -130,7 +128,9 @@ class BillController extends Controller
 
         $bill->load(['host', 'participants.user', 'expenses.payer', 'expenses.guestPayer']);
 
-        $participants = $bill->participants()->where('is_active', true)->with('user')->get()->map(fn($p) => [
+        $participants = $bill->participants
+            ->where('is_active', true)
+            ->map(fn($p) => [
             'id'              => $p->id,
             'user_id'         => $p->user_id,
             'name'            => $p->user ? $p->user->firstname . ' ' . $p->user->lastname
@@ -141,6 +141,37 @@ class BillController extends Controller
             'guest_nickname'  => $p->guest_nickname,
             'guest_email'     => $p->guest_email,
         ]);
+
+        $allParticipants = $bill->participants
+            ->map(fn($p) => [
+                'id'   => $p->id,
+                'name' => $p->user ? $p->user->firstname . ' ' . $p->user->lastname
+                                   : trim(($p->guest_firstname ?? '') . ' ' . ($p->guest_lastname ?? '')),
+            ])
+            ->keyBy('id');
+
+        $expenses = $bill->expenses->map(function ($e) use ($allParticipants) {
+            $payerName = 'Unknown';
+            if ($e->payer) {
+                $payerName = $e->payer->firstname . ' ' . $e->payer->lastname;
+            } elseif ($e->guestPayer) {
+                $payerName = trim(($e->guestPayer->guest_firstname ?? '') . ' ' . ($e->guestPayer->guest_lastname ?? '')) ?: 'Guest';
+            } elseif ($e->paid_by && isset($allParticipants[$e->paid_by])) {
+                $payerName = $allParticipants[$e->paid_by]['name'];
+            }
+
+            return [
+                'id'           => $e->id,
+                'expense_name' => $e->expense_name,
+                'amount'       => $e->amount,
+                'split_type'   => $e->split_type,
+                'expense_date' => $e->expense_date,
+                'payer_name'   => $payerName,
+                'paid_by'      => $e->paid_by,
+                'guest_paid_by'=> $e->guest_paid_by,
+                'split_with'   => $e->split_with,
+            ];
+        });
 
         $availableUsers = User::where('id', '!=', Auth::id())
             ->where('usertype', '!=', 'guest')
@@ -154,8 +185,17 @@ class BillController extends Controller
             ]);
 
         return Inertia::render('bills/show', [
-            'bill'           => $bill,
-            'participants'   => $participants,
+            'bill'           => [
+                'id'              => $bill->id,
+                'billname'        => $bill->billname,
+                'invitation_code' => $bill->invitation_code,
+                'hostid'          => $bill->hostid,
+                'status'          => $bill->status,
+                'total_amount'    => $bill->total_amount,
+                'people_count'    => $bill->people_count,
+                'expenses'        => $expenses->values(),
+            ],
+            'participants'   => $participants->values(),
             'availableUsers' => $availableUsers,
             'isHost'         => $bill->isHostedBy(Auth::id()),
             'usertype'       => Auth::user()->usertype,
@@ -237,9 +277,12 @@ class BillController extends Controller
             'guest_email'     => ['nullable', 'email', 'max:255'],
         ]);
 
-        $user = Auth::user();
-        if ($user->usertype === 'standard' && $bill->people_count >= 3) {
-            return back()->withErrors(['participant' => 'Standard users can only have up to 3 people per bill.']);
+        $host = $bill->host;
+        if ($host->usertype === 'standard') {
+            $actualCount = $bill->participants()->where('is_active', true)->count();
+            if ($actualCount >= 3) {
+                return back()->withErrors(['participant' => 'Standard accounts can only have up to 3 people per bill.']);
+            }
         }
 
         if ($request->type === 'user' && $request->user_id) {

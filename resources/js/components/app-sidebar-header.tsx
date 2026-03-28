@@ -19,7 +19,7 @@ export function AppSidebarHeader({
                     className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     aria-label="Toggle sidebar"
                 >
-                    {isOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+                    {isOpen ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
                 </button>
                 <Breadcrumbs breadcrumbs={breadcrumbs} />
             </div>

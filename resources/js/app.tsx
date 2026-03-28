@@ -1,4 +1,4 @@
-import { createInertiaApp } from '@inertiajs/react';
+import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -6,6 +6,24 @@ import '../css/app.css';
 import { initializeTheme } from '@/hooks/use-appearance';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+
+const guestOnlyPages = ['/login', '/register', '/forgot-password', '/reset-password', '/guest/lookup', '/guest/register'];
+const authRequiredPages = ['/dashboard', '/bills', '/settings', '/boost'];
+
+router.on('navigate', (event) => {
+    const page = event.detail.page;
+    const user = (page.props as any)?.auth?.user;
+    const url = new URL(page.url, window.location.origin).pathname;
+
+    if (!user && authRequiredPages.some(p => url.startsWith(p))) {
+        router.visit('/login', { replace: true });
+        return;
+    }
+
+    if (user && guestOnlyPages.some(p => url.startsWith(p))) {
+        router.visit('/dashboard', { replace: true });
+    }
+});
 
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),

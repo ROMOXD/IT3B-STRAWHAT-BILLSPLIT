@@ -1,5 +1,4 @@
 import { Form, Head } from '@inertiajs/react';
-import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
@@ -20,71 +19,60 @@ export default function Register() {
                 {...store.form()}
                 resetOnSuccess={['password', 'password_confirmation']}
                 disableWhileProcessing
+                noValidate
                 className="flex flex-col gap-5"
             >
                 {({ processing, errors }) => (
                     <>
+                        {Object.values(errors).filter(Boolean)[0] && (
+                            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                                {Object.values(errors).filter(Boolean)[0]}
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="grid gap-2">
                                 <Label htmlFor="firstname" className="text-sm font-medium text-gray-700 dark:text-gray-300">First Name</Label>
                                 <input id="firstname" type="text" name="firstname" required autoFocus tabIndex={1}
-                                    autoComplete="given-name" placeholder="John" className={inputClass} />
-                                <InputError message={errors.firstname} />
+                                    autoComplete="given-name" title="Please enter your first name" className={inputClass} />
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="lastname" className="text-sm font-medium text-gray-700 dark:text-gray-300">Last Name</Label>
                                 <input id="lastname" type="text" name="lastname" required tabIndex={2}
-                                    autoComplete="family-name" placeholder="Doe" className={inputClass} />
-                                <InputError message={errors.lastname} />
+                                    autoComplete="family-name" title="Please enter your last name" className={inputClass} />
                             </div>
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="nickname" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Nickname <span className="text-red-500">*</span>
-                            </Label>
+                            <Label htmlFor="nickname" className="text-sm font-medium text-gray-700 dark:text-gray-300">Nickname</Label>
                             <input id="nickname" type="text" name="nickname" required tabIndex={3}
-                                placeholder="Must be unique" className={inputClass} />
-                            <InputError message={errors.nickname} />
+                                title="Please enter a nickname" className={inputClass} />
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="username" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Username <span className="text-red-500">*</span>
-                            </Label>
+                            <Label htmlFor="username" className="text-sm font-medium text-gray-700 dark:text-gray-300">Username</Label>
                             <input id="username" type="text" name="username" required tabIndex={4}
-                                autoComplete="username" placeholder="johndoe123" className={inputClass} />
-                            <InputError message={errors.username} />
+                                autoComplete="username" title="Please enter a username" className={inputClass} />
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Email address <span className="text-red-500">*</span>
-                            </Label>
+                            <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">Email address</Label>
                             <input id="email" type="email" name="email" required tabIndex={5}
-                                autoComplete="email" placeholder="email@example.com" className={inputClass} />
-                            <InputError message={errors.email} />
+                                autoComplete="email" title="Please enter your email address" className={inputClass} />
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="password" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Password <span className="text-red-500">*</span>
-                            </Label>
+                            <Label htmlFor="password" className="text-sm font-medium text-gray-700 dark:text-gray-300">Password</Label>
                             <PasswordInput id="password" name="password" required tabIndex={6}
-                                autoComplete="new-password" placeholder="Password" inputClassName={inputClass} />
+                                autoComplete="new-password" title="Please enter a password" inputClassName={inputClass} />
                             <p className="text-xs text-gray-400 dark:text-gray-500">
-                                8–16 characters · uppercase · lowercase · number · special character
+                                8–16 characters · uppercase · lowercase · number
                             </p>
-                            <InputError message={errors.password} />
                         </div>
 
                         <div className="grid gap-2">
-                            <Label htmlFor="password_confirmation" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Confirm password <span className="text-red-500">*</span>
-                            </Label>
+                            <Label htmlFor="password_confirmation" className="text-sm font-medium text-gray-700 dark:text-gray-300">Confirm password</Label>
                             <PasswordInput id="password_confirmation" name="password_confirmation" required tabIndex={7}
-                                autoComplete="new-password" placeholder="Confirm password" inputClassName={inputClass} />
-                            <InputError message={errors.password_confirmation} />
+                                autoComplete="new-password" title="Please confirm your password" inputClassName={inputClass} />
                         </div>
 
                         <button

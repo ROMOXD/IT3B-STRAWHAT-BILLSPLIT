@@ -20,7 +20,7 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
 
     return (
-        <div className="min-h-full bg-background px-4 py-8 sm:px-6 lg:px-8">
+        <div className="bg-background px-4 py-8 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-4xl">
                 {/* Page header */}
                 <div className="mb-8">

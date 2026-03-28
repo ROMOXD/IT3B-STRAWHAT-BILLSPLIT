@@ -10,27 +10,22 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class WelcomeMail extends Mailable implements ShouldQueue
+class VerificationCodeMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public User $user) {}
+    public function __construct(public User $user, public string $code) {}
 
     public function envelope(): Envelope
     {
-        return new Envelope(
-            subject: 'Welcome to SplitBill!',
-        );
+        return new Envelope(subject: 'Your SplitBill Verification Code');
     }
 
     public function content(): Content
     {
-        return new Content(
-            markdown: 'emails.welcome',
-            with: [
-                'user'     => $this->user,
-                'loginUrl' => url('/login'),
-            ],
-        );
+        return new Content(markdown: 'emails.verification-code', with: [
+            'user' => $this->user,
+            'code' => $this->code,
+        ]);
     }
 }

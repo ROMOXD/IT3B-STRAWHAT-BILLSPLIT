@@ -11,8 +11,19 @@ class EnforceGuestAccessExpiry
 {
     public function handle(Request $request, Closure $next): Response
     {
-        // Guest access expiry is now handled via session token in GuestController.
-        // This middleware only applies to authenticated (registered) users.
+        $user = Auth::user();
+
+        if ($user && $user->usertype === 'guest') {
+            if ($user->guest_access_expires_at && now()->isAfter($user->guest_access_expires_at)) {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+
+                return redirect()->route('guest.lookup')
+                    ->withErrors(['access' => 'Your guest access has expired. Please use your invitation code again.']);
+            }
+        }
+
         return $next($request);
     }
 }

@@ -151,11 +151,15 @@ class Bill extends Model
      */
     public function scopeForUser($query, $userId)
     {
-        return $query->where('hostid', $userId)
-                     ->orWhereHas('participants', function ($q) use ($userId) {
-                         $q->where('user_id', $userId)
-                           ->where('is_active', true);
-                     });
+        return $query->where(function ($q) use ($userId) {
+            $q->where('hostid', $userId)
+              ->orWhereIn('id', function ($sub) use ($userId) {
+                  $sub->select('bill_id')
+                      ->from('bill_participants')
+                      ->where('user_id', $userId)
+                      ->where('is_active', true);
+              });
+        });
     }
 
     // ==================== ACCESSORS ====================
@@ -233,8 +237,11 @@ class Bill extends Model
             return false;
         }
 
-        if ($this->host && $this->host->usertype === 'standard' && $this->people_count >= 3) {
-            throw new \Exception('Standard users can only have up to 3 people per bill.');
+        if ($this->host && $this->host->usertype === 'standard') {
+            $actualCount = $this->participants()->where('is_active', true)->count();
+            if ($actualCount >= 3) {
+                throw new \Exception('Standard users can only have up to 3 people per bill.');
+            }
         }
 
         $participant = $this->participants()->create([

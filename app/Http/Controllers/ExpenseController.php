@@ -32,7 +32,8 @@ class ExpenseController extends Controller
             'expense_date'  => ['required', 'date'],
             'split_type'    => ['required', 'in:equal,custom'],
             'split_with'    => ['nullable', 'array'],
-            'split_with.*'  => ['integer', 'exists:bill_participants,id'],
+            'split_with.*.participant_id' => ['nullable', 'integer', 'exists:bill_participants,id'],
+            'split_with.*.amount'         => ['nullable', 'numeric', 'min:0'],
             'paid_by_type'  => ['required', 'in:user,guest'],
             'paid_by'       => ['nullable', 'exists:users,id'],
             'guest_paid_by' => ['nullable', 'exists:bill_participants,id'],
@@ -48,9 +49,11 @@ class ExpenseController extends Controller
             }
         }
 
-        // For custom split, require at least one participant selected
-        if ($request->split_type === 'custom' && empty($request->split_with)) {
-            return back()->withErrors(['split_with' => 'Select at least one participant for custom split.']);
+        if ($request->split_type === 'custom') {
+            $splitTotal = collect($request->split_with ?? [])->sum('amount');
+            if (abs($splitTotal - $request->amount) >= 0.01) {
+                return back()->withErrors(['split_with' => 'Custom split amounts must equal the total expense amount.']);
+            }
         }
 
         $expense = Expense::create([
@@ -69,6 +72,21 @@ class ExpenseController extends Controller
         return back()->with('success', 'Expense added.');
     }
 
+    public function updateName(Request $request, Bill $bill, Expense $expense)
+    {
+        if (!$bill->isHostedBy(Auth::id()) || $expense->bill_id !== $bill->id) {
+            abort(403);
+        }
+
+        $request->validate([
+            'expense_name' => ['required', 'string', 'max:255', 'regex:/^\S.*$/'],
+        ]);
+
+        $expense->update(['expense_name' => $request->expense_name]);
+
+        return back()->with('success', 'Expense name updated.');
+    }
+
     public function update(Request $request, Bill $bill, Expense $expense)
     {
         if (!$bill->isHostedBy(Auth::id()) || $expense->bill_id !== $bill->id) {
@@ -81,14 +99,18 @@ class ExpenseController extends Controller
             'expense_date'  => ['required', 'date'],
             'split_type'    => ['required', 'in:equal,custom'],
             'split_with'    => ['nullable', 'array'],
-            'split_with.*'  => ['integer', 'exists:bill_participants,id'],
+            'split_with.*.participant_id' => ['nullable', 'integer', 'exists:bill_participants,id'],
+            'split_with.*.amount'         => ['nullable', 'numeric', 'min:0'],
             'paid_by_type'  => ['required', 'in:user,guest'],
             'paid_by'       => ['nullable', 'exists:users,id'],
             'guest_paid_by' => ['nullable', 'exists:bill_participants,id'],
         ]);
 
-        if ($request->split_type === 'custom' && empty($request->split_with)) {
-            return back()->withErrors(['split_with' => 'Select at least one participant for custom split.']);
+        if ($request->split_type === 'custom') {
+            $splitTotal = collect($request->split_with ?? [])->sum('amount');
+            if (abs($splitTotal - $request->amount) >= 0.01) {
+                return back()->withErrors(['split_with' => 'Custom split amounts must equal the total expense amount.']);
+            }
         }
 
         $amountDiff = $request->amount - $expense->amount;

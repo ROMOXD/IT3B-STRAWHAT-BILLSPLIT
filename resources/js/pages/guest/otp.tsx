@@ -1,17 +1,15 @@
 import { Head, useForm } from '@inertiajs/react';
-import { router } from '@inertiajs/react';
 import { MailCheck } from 'lucide-react';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { Spinner } from '@/components/ui/spinner';
 import AuthLayout from '@/layouts/auth-layout';
 
-export default function VerifyEmail({ status, errors }: { status?: string; errors?: Record<string, string> }) {
-    const sendForm = useForm({});
-    const verifyForm = useForm({ code: '' });
+export default function GuestOtp({ errors }: { errors?: Record<string, string> }) {
+    const { data, setData, post, processing, errors: formErrors } = useForm({ code: '' });
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        verifyForm.post('/email/verification-code/verify');
+        post('/guest/otp');
     }
 
     return (
@@ -19,24 +17,18 @@ export default function VerifyEmail({ status, errors }: { status?: string; error
             title="Check your email"
             description="Enter the 6-digit code we sent to your email address"
         >
-            <Head title="Email verification" />
+            <Head title="Guest Verification" />
 
             <div className="flex flex-col items-center gap-6 text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/30">
                     <MailCheck className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
                 </div>
 
-                {status === 'verification-code-sent' && (
-                    <div className="w-full rounded-lg bg-green-50 px-4 py-3 text-sm font-medium text-green-700 dark:bg-green-900/20 dark:text-green-400">
-                        A new verification code has been sent to your email.
-                    </div>
-                )}
-
                 <form onSubmit={handleSubmit} className="flex flex-col items-center gap-4 w-full">
                     <InputOTP
                         maxLength={6}
-                        value={verifyForm.data.code}
-                        onChange={(value) => verifyForm.setData('code', value)}
+                        value={data.code}
+                        onChange={(value) => setData('code', value)}
                     >
                         <InputOTPGroup>
                             {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -45,38 +37,28 @@ export default function VerifyEmail({ status, errors }: { status?: string; error
                         </InputOTPGroup>
                     </InputOTP>
 
-                    {(verifyForm.errors.code || errors?.code) && (
+                    {(formErrors.code || errors?.code) && (
                         <p className="text-sm text-red-600 dark:text-red-400">
-                            {verifyForm.errors.code || errors?.code}
+                            {formErrors.code || errors?.code}
                         </p>
                     )}
 
                     <button
                         type="submit"
-                        disabled={verifyForm.processing || verifyForm.data.code.length < 6}
+                        disabled={processing || data.code.length < 6}
                         className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-300 disabled:opacity-60 dark:focus:ring-indigo-800"
                     >
-                        {verifyForm.processing && <Spinner />}
-                        Verify email
+                        {processing && <Spinner />}
+                        Verify & Log In
                     </button>
                 </form>
 
-                <button
-                    type="button"
-                    disabled={sendForm.processing}
-                    onClick={() => sendForm.post('/email/verification-code/send')}
-                    className="text-sm font-medium text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-60"
-                >
-                    {sendForm.processing ? 'Sending…' : 'Resend code'}
-                </button>
-
-                <button
-                    type="button"
-                    onClick={() => router.post('/logout')}
+                <a
+                    href="/guest/lookup"
                     className="text-sm font-medium text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400"
                 >
-                    Log out
-                </button>
+                    Back to lookup
+                </a>
             </div>
         </AuthLayout>
     );

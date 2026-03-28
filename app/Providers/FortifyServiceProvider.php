@@ -67,7 +67,8 @@ class FortifyServiceProvider extends ServiceProvider
         ]));
 
         Fortify::requestPasswordResetLinkView(fn (Request $request) => Inertia::render('auth/forgot-password', [
-            'status' => $request->session()->get('status'),
+            'step'  => $request->session()->get('password_reset_step', 'email'),
+            'email' => $request->session()->get('password_reset_email'),
         ]));
 
         Fortify::verifyEmailView(fn (Request $request) => Inertia::render('auth/verify-email', [
@@ -93,7 +94,9 @@ class FortifyServiceProvider extends ServiceProvider
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
 
-            return Limit::perMinute(5)->by($throttleKey);
+            return Limit::perMinute(10)->by($throttleKey)->response(function () {
+                return back()->withErrors(['email' => 'Too many login attempts. Please wait a minute and try again.']);
+            });
         });
     }
 }

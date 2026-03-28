@@ -20,8 +20,13 @@ class User extends Authenticatable implements MustVerifyEmail
         'email',
         'usertype',
         'password',
+        'bill_id',
         'guest_access_expires_at',
         'invitation_code',
+        'email_verification_code',
+        'email_verification_code_expires_at',
+        'password_reset_code',
+        'password_reset_code_expires_at',
     ];
 
     protected $hidden = [
@@ -55,6 +60,10 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function canCreateBill(): bool
     {
+        if ($this->usertype === 'guest') {
+            return false;
+        }
+
         if ($this->usertype === 'premium') {
             return true;
         }
@@ -66,6 +75,11 @@ class User extends Authenticatable implements MustVerifyEmail
             ->count();
 
         return $count < 5;
+    }
+
+    public function sendEmailVerificationNotification(): void
+    {
+        // Suppressed — OTP code is sent via VerificationCodeMail instead
     }
 
     public function isGuestAccessExpired(): bool

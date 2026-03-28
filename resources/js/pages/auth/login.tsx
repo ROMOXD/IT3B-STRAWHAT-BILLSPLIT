@@ -1,7 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
-import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import AuthLayout from '@/layouts/auth-layout';
@@ -31,9 +29,16 @@ export default function Login({ status, canResetPassword, canRegister }: Props) 
                 </div>
             )}
 
-            <Form {...store.form()} resetOnSuccess={['password']} className="flex flex-col gap-5">
+            <Form {...store.form()} resetOnSuccess={['password']} noValidate className="flex flex-col gap-5">
                 {({ processing, errors }) => (
                     <>
+                        {(errors.email || errors.password) && (
+                            <div className="rounded-lg bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                                {errors.email?.toLowerCase().includes('too many')
+                                    ? errors.email
+                                    : 'Invalid email or password.'}
+                            </div>
+                        )}
                         <div className="grid gap-2">
                             <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                 Email address
@@ -46,10 +51,9 @@ export default function Login({ status, canResetPassword, canRegister }: Props) 
                                 autoFocus
                                 tabIndex={1}
                                 autoComplete="email"
-                                placeholder="email@example.com"
+                                title="Please enter your email address"
                                 className={inputClass}
                             />
-                            <InputError message={errors.email} />
                         </div>
 
                         <div className="grid gap-2">
@@ -69,17 +73,9 @@ export default function Login({ status, canResetPassword, canRegister }: Props) 
                                 required
                                 tabIndex={2}
                                 autoComplete="current-password"
-                                placeholder="Password"
+                                title="Please enter your password"
                                 inputClassName={inputClass}
                             />
-                            <InputError message={errors.password} />
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <Checkbox id="remember" name="remember" tabIndex={3} />
-                            <Label htmlFor="remember" className="text-sm text-gray-600 dark:text-gray-400">
-                                Remember me
-                            </Label>
                         </div>
 
                         <button
